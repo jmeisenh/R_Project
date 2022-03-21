@@ -1,0 +1,443 @@
+---
+title: "R Project Notebook"
+date: "`r Sys.Date()`"
+author: "Justin Meisenhelter"
+output: 
+  rmdformats::downcute:
+    highlight: tango
+    df_print: paged
+    collapsed: false
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+```
+
+
+
+```{r}
+le = read.csv('Life Expectancy Data.csv')
+```
+
+# Data Dictionary  
+Adult Mortality (Numeric) - # mortalities of adults(15-60) out of 1000 total mortalities.(legal values 0-1000).  
+
+infant deaths (Numeric) - # mortalities of infants(0-1) out of 1000.(legal values 0-1000).  
+
+Alcohol (Numeric) - avg consumption of pure alcohol. (age>15), (leagal values >=0).  
+
+percentage expenditure (Numeric) - how much spend on health as part of GDP.(legal values <= GDP of the same key).  
+
+Hepatitis B (Ratio %) - number of 1 year olds with Hepatitis B immunization over all 1 year olds in population in percantage.  
+
+Measles (Numeric) - number of reported Measles cases per 1000 population, numbers indicate per population(much more than 1000)  
+
+BMI (Numeric) - average Body Mass Index.  
+
+under-five deaths (Numeric) - number of people under 5 year's old that died out of 1000.  
+
+Polio (Ratio %) - number of 1 year olds immunized from Polio of out all 1 year olds.  
+
+Total expenditure (Ratio %) - General government expenditure on health as a percentage of total government expenditure.  
+
+Diphtheria (Ratio %) - Diphtheria tetanus toxoid and pertussis (DTP3) immunization rate of 1 year olds in percantage.  
+
+HIV/AIDS (Numeric) - deaths per 1000 live births caused by HIV/AIDS for people ages 0-4.  
+
+GDP (Numeric) - Gross Domestic Product per person($).  
+
+Population (Numeric) - how many people lived in a country in a specific year.  
+
+thinness 1-19 years (Ratio %) - thinness ratio among children and adolescents for Age 10 to 19, name should be fix.
+
+thinness 5-9 yearss (Ratio %) - thinness ratio among children and adolescents for Age 5 to 9.
+
+Income composition of resources (Ratio %) - Human Development Index in terms of income composition of resources (index ranging from 0 to 1)
+
+schooling (Numeric) - average number of schooling years.  
+
+# Initial EDA
+
+```{r}
+head(le)
+```
+
+```{r}
+summary(le)
+```
+
+**There are values out of range (infant mortality 1800, max is 1000) multiple NA values**
+
+### Visual EDA - Histogram
+Let's see how our data is distributed
+
+```{r}
+le %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = 'free') +
+  geom_histogram()
+```
+
+A lot of values are very Skewed. 
+
+There is a categorical variable for devloped or developing nations, let's look at the difference in life expectancy in the two groups.  
+
+```{r}
+le %>%
+  group_by(Status) %>%
+  summarise(Life_Exp_avg = mean(Life.expectancy, na.rm = TRUE))
+```
+
+More than a 10 percent difference between groups.  
+
+Let's look at numerical correlations.  
+
+```{r}
+le %>%
+  keep(is.numeric) -> le.num
+round(cor(as.data.frame(na.omit(le.num))),2) -> C
+png(file = 'corr.png', res = 300, width = 4500, height = 4500)
+corrplot(C, method='circle', type = 'lower')
+```
+
+
+```{r}
+cor(as.data.frame(na.omit(le.num)))[, 2:3]
+```
+
+## Clean Data
+
+**replace NA values with column average**
+
+```{r}
+for(i in 4:ncol(le)){
+  le[is.na(le[,i]), i] <-mean(le[,i], na.rm = TRUE)
+}
+```
+check results
+```{r}
+summary(le)
+```
+
+**use reason to drop columns**
++ Country name has no bearing on life expectancy, drop it  
++ percentage.expenditure is too highly correlated with GDP, let's wee which one to keep:  
+
+```{r}
+ggplot(le, aes(x = GDP)) + geom_histogram()
+ggplot(le, aes(x=percentage.expenditure)) + geom_histogram() 
+ggplot(le, aes(x = GDP)) + geom_boxplot()
+ggplot(le, aes(x = percentage.expenditure)) + geom_boxplot()
+```
+
+
+
+GDP seems slightly better distributed, drop percentage.expenditure  
++ under.five.deaths and infant.deaths are too highly correlated, drop infant.deaths, because all the data in under.five is included in infant.deaths  
++ thinness.5.9.years data in included in thinness..1.19.years, drop 5.9  
++ Adult Mortality is direct measure of target variable, drop it  
+
+### Drop Columns 
+```{r}
+le %>%
+  dplyr::select(-c(Adult.Mortality, infant.deaths, percentage.expenditure, thinness.5.9.years)) -> le.drop
+
+```
+
+**check for illegal values  **
+```{r}
+# check for under 5 deaths greater than 1000
+le.drop %>%
+  filter(under.five.deaths <= 1000) -> le.clean
+```
+
+the following columns are supposed to be ratios:
+```{r}
+ratios <- c(le.clean$Hepatitis.B, le.clean$Polio, le.clean$Total.expenditure, le.clean$Diptheria, le.clean$thinness..1.19.years, le.clean$Income.composition.of.resources )
+le.clean %>%
+  dplyr::mutate(Hepatitis.B = round(Hepatitis.B/100, 3)) %>%
+  dplyr::mutate(Polio = round(Polio/100, 3)) %>%
+  dplyr::mutate(Total.expenditure =round((Total.expenditure/10),3)) %>%
+  dplyr::mutate(Diphtheria = round(Diphtheria/100,3)) %>%
+  dplyr::mutate(Thinness = round(thinness..1.19.years/100, 3)) %>%
+  dplyr::select(-thinness..1.19.years) %>%
+  dplyr::mutate(Income.composition = round(Income.composition.of.resources,3)) -> le.clean
+
+```
+
+Group by country and look for values in fields with more than 10% change over all years  
+```{r}
+le.clean %>%
+  dplyr::select(-Status) %>%
+  dplyr::group_by(Country) %>%
+  dplyr::summarise(across(where(is.numeric),
+                          ~ (max(.x, na.rm = TRUE) - min(.x, na.rm = TRUE))/max(.x, na.rm = TRUE))) -> le.diff  
+le.diff
+```
+
+```{r}
+for(i in 2:ncol(le.diff)){
+  le.diff[is.na(le.diff[,i]), i] <- mean(le.diff[,i], na.rm = TRUE)
+}
+le.diff
+```
+Lets graph all variables as a histogram and see if any have extreme amounts of large change
+```{r}
+le.diff %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+
+```
+
+
+Variables where very large percentage changes are suspicious:  
++ Alcohol  
++ BMI  
++ GDP  
++ Income.composition  
++ Income.composition.of.resources
++ Population  
++ under.five.deaths
+
+### Alcohol Variability  
+
+```{r}
+le.diff %>%
+  filter(Alcohol > .9) %>%
+  dplyr::select(Country) -> le.high.alcohol
+le.clean %>%
+  inner_join(., le.high.alcohol, by = 'Country') 
+  
+```
+
+
+
+**Let's save further datacleanup for if we can't get a good model**
+create basic saturated linear model
+```{r}
+le.saturated = lm(Life.expectancy ~ . - Country, data = le.clean)
+summary(le.saturated)
+
+```
+
+**Assessing the assumptions of the model** 
+```{r}
+plot(le.saturated)
+```
+
+
+**Check VIF of all the variables**  
+
+```{r}
+vif(le.saturated)
+```
+Income composition variables seem to be the highest, but below threshold of 5  
+
+**perform step-wise feature selection**
+```{r}
+library(MASS)
+le.empty = lm(Life.expectancy ~1, data = le.clean)
+le.full = lm(Life.expectancy ~ . -Country, data = le.clean)
+scope = list(lower = formula(le.empty), upper = formula(le.full))
+forwardAIC = step(le.empty, scope, direction= 'forward', k=2)
+```
+
+```{r}
+summary(forwardAIC)
+```
+pretty good initial fit, lets try some predictions
+
+
+### Test and Train
+
+**split dataframe into 90% train and 10% test**
+```{r}
+set.seed(7)
+tt <- sample(1:2, size = nrow(le.clean), replace = TRUE, prob=c(0.9, 0.1))
+le.train <- le.clean[tt == 1,]
+le.test <- le.clean[tt == 2,]
+```
+
+**create DF without country column**
+```{r}
+le.clean %>%
+  dplyr::select(-Country) -> le.cleanNC
+```
+
+
+**do forward AIC stepwise to get model for this data**
+
+```{r}
+
+le.train.emptyMod <- lm(Life.expectancy ~ 1, data = le.cleanNC)
+le.train.fullMod <- lm(Life.expectancy ~ ., data = le.cleanNC)
+scope = list(lower = formula(le.train.emptyMod), upper = formula(le.train.fullMod))
+le.train.FAIC <- step(le.train.emptyMod, scope, direction = 'forward', k=2)
+```
+**lets compare model from full dataset to model from train dataset**
+```{r}
+anova(le.train.FAIC, forwardAIC)
+```
+
+
+**The models are identical**
+
+**lets do some prediction with our test DF**
+```{r}
+le.predictCon <- predict(le.train.FAIC, le.test, interval = 'confidence')
+le.predictPred <-predict(le.train.FAIC, le.test, interval = 'prediction')
+lm(le.test$Life.expectancy ~ le.predictCon[,1])
+```
+**lets try and visualize this**
+```{r}
+plot(le.test$Life.expectancy, le.predictCon[,1], xlab = 'Actual Life Expectancy',
+     ylab = 'Prediction', main = 'Predicted versus Actual Life expectancy', col = 'blue')
+abline(-3.254, 1.049)
+plot(le.test$Life.expectancy, le.predictPred[,1], xlab = 'Actual Life Expectancy',
+     ylab = 'Prediction', main = 'Predicted versus Actual Life expectancy', col = 'red')
+
+```
+...not great was hoping to see a straight line
+
+
+**lets two a T-Test to determine how far off our model is**
+```{r}
+t.test(le.clean$Life.expectancy, le.predictPred[,1])
+```
+not as low as I was hoping, I guess we have more work to do
+
+## Box Cox transformation  
+
+**let's see which variables could be a candidate for transformation**
+```{r}
+le.train %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+```
+
+
+```{r}
+bc = boxCox(le.train.FAIC)
+lambda = bc$x[which(bc$y == max(bc$y))]
+# transforma dataset
+
+```
+
+```{r}
+bctransform <- function(x){
+  x^2-1/2
+}
+le.bc <-le.train
+le.bc[5:19] <- lapply(le.bc[5:19],bctransform)
+```
+**look at transformed values**
+```{r}
+le.bc %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+```
+
+
+
+## Retrain the model  
+```{r}
+le.bc.emptyMod <- lm(Life.expectancy ~ 1, data = le.bc[,-c(1,2)])
+le.bc.fullMod <- lm(Life.expectancy ~ ., data = le.bc[,-c(1,2)])
+scope = list(lower = formula(le.bc.emptyMod), upper = formula(le.bc.fullMod))
+le.bc.FAIC <- step(le.bc.emptyMod, scope, direction = 'forward', k=2)
+```
+
+**let's see what we got**
+```{r}
+plot(le.bc.FAIC)
+summary(le.bc.FAIC)
+```
+
+this is worse, let's forget box cox.
+```{r}
+le.clean %>%
+  keep(is.numeric) -> le.cleanNum
+round(cor(as.data.frame(na.omit(le.cleanNum))),2) -> C
+png(file = 'corr.png', res = 300, width = 4500, height = 4500)
+corrplot(C, method='circle', type = 'lower')
+```
+
+income composition is correlated with a lot of variables: income.composition.of.resources., and schooling..let's drop those two and try again  
+
+```{r}
+set.seed(7)
+le.clean %>%
+  dplyr::select(-c(Schooling, -Income.composition.of.resources)) -> le.reduced
+tt <- sample(1:2, size = nrow(le.reduced), replace = TRUE, prob=c(0.9, 0.1))
+le.train <- le.reduced[tt == 1,]
+le.test <- le.reduced[tt == 2,]
+```
+use forward AIC to train a new model with less variables
+
+```{r}
+le.train.emptyMod <- lm(Life.expectancy ~ 1, data = le.train[,-c(1,2)])
+le.train.fullMod <- lm(Life.expectancy ~ ., data = le.train[,-c(1,2)])
+scope = list(lower = formula(le.train.emptyMod), upper = formula(le.train.fullMod))
+le.reduced.FAIC <- step(le.train.emptyMod, scope, direction = 'forward', k=2)
+```
+
+lets look at the model
+
+```{r}
+summary(le.reduced.FAIC)
+```
+
+
+
+**lets do some prediction with our test DF**
+```{r}
+le.predictCon <- predict(le.reduced.FAIC, le.test, interval = 'confidence')
+le.predictPred <-predict(le.reduced.FAIC, le.test, interval = 'prediction')
+lm(le.test$Life.expectancy ~ le.predictCon[,1])
+```
+**lets try and visualize this**
+```{r}
+plot(le.test$Life.expectancy, le.predictCon[,1], xlab = 'Actual Life Expectancy',
+     ylab = 'Prediction', main = 'Predicted versus Actual Life expectancy', col = 'blue')
+abline(-3.254, 1.049)
+plot(le.test$Life.expectancy, le.predictPred[,1], xlab = 'Actual Life Expectancy',
+     ylab = 'Prediction', main = 'Predicted versus Actual Life expectancy', col = 'red')
+
+```
+
+
+```{r}
+t.test(le.test$Life.expectancy, le.predictCon[,1])
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

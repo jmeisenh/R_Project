@@ -1,0 +1,369 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(corrplot)
+```
+
+
+
+```{r}
+le = read.csv('Life Expectancy Data.csv')
+```
+
+# Data Dictionary  
+Adult Mortality (Numeric) - # mortalities of adults(15-60) out of 1000 total mortalities.(legal values 0-1000).  
+
+infant deaths (Numeric) - # mortalities of infants(0-1) out of 1000.(legal values 0-1000).  
+
+Alcohol (Numeric) - avg consumption of pure alcohol. (age>15), (leagal values >=0).  
+
+percentage expenditure (Numeric) - how much spend on health as part of GDP.(legal values <= GDP of the same key).  
+
+Hepatitis B (Ratio %) - number of 1 year olds with Hepatitis B immunization over all 1 year olds in population in percantage.  
+
+Measles (Numeric) - number of reported Measles cases per 1000 population, numbers indicate per population(much more than 1000)  
+
+BMI (Numeric) - average Body Mass Index.  
+
+under-five deaths (Numeric) - number of people under 5 year's old that died out of 1000.  
+
+Polio (Ratio %) - number of 1 year olds immunized from Polio of out all 1 year olds.  
+
+Total expenditure (Ratio %) - General government expenditure on health as a percentage of total government expenditure.  
+
+Diphtheria (Ratio %) - Diphtheria tetanus toxoid and pertussis (DTP3) immunization rate of 1 year olds in percantage.  
+
+HIV/AIDS (Numeric) - deaths per 1000 live births caused by HIV/AIDS for people ages 0-4.  
+
+GDP (Numeric) - Gross Domestic Product per person($).  
+
+Population (Numeric) - how many people lived in a country in a specific year.  
+
+thinness 1-19 years (Ratio %) - thinness ratio among children and adolescents for Age 10 to 19, name should be fix.
+
+thinness 5-9 yearss (Ratio %) - thinness ratio among children and adolescents for Age 5 to 9.
+
+Income composition of resources (Ratio %) - Human Development Index in terms of income composition of resources (index ranging from 0 to 1)
+
+schooling (Numeric) - average number of schooling years.  
+
+# Initial EDA
+
+```{r}
+head(le)
+```
+
+```{r}
+summary(le)
+```
+
+**There are values out of range (infant mortality 1800, max is 1000) multiple NA values**
+
+### Visual EDA - Histogram
+Let's see how our data is distributed
+
+```{r}
+le %>%
+  keep(is.numeric) %>%
+  gather() %>%
+  ggplot(aes(value)) +
+  facet_wrap(~ key, scales = 'free') +
+  geom_histogram()
+```
+
+A lot of values are very Skewed. 
+
+There is a categorical variable for devloped or developing nations, let's look at the difference in life expectancy in the two groups.  
+
+```{r}
+le %>%
+  group_by(Status) %>%
+  summarise(Life_Exp_avg = mean(Life.expectancy, na.rm = TRUE))
+```
+
+More than a 10 percent difference between groups.  
+
+Let's look at numerical correlations.  
+
+```{r}
+le %>%
+  keep(is.numeric) -> le.num
+round(cor(as.data.frame(na.omit(le.num))),2) -> C
+png(file = 'corr.png', res = 300, width = 4500, height = 4500)
+corrplot(C, method='circle', type = 'lower')
+```
+
+
+```{r}
+cor(as.data.frame(na.omit(le.num)))[, 2:3]
+```
+
+## Clean Data
+
+**replace NA values with column average**
+
+```{r}
+for(i in 4:ncol(le)){
+  le[is.na(le[,i]), i] <-mean(le[,i], na.rm = TRUE)
+}
+```
+check results
+```{r}
+summary(le)
+```
+
+**use reason to drop columns**
++ Country name has no bearing on life expectancy, drop it  
++ percentage.expenditure is too highly correlated with GDP, let's wee which one to keep:  
+
+```{r}
+ggplot(le, aes(x = GDP)) + geom_histogram()
+ggplot(le, aes(x=percentage.expenditure)) + geom_histogram() 
+ggplot(le, aes(x = GDP)) + geom_boxplot()
+ggplot(le, aes(x = percentage.expenditure)) + geom_boxplot()
+```
+
+
+
+GDP seems slightly better distributed, drop percentage.expenditure  
++ under.five.deaths and infant.deaths are too highly correlated, drop infant.deaths, because all the data in under.five is included in infant.deaths  
++ thinness.5.9.years data in included in thinness..1.19.years, drop 5.9  
++ Adult Mortality is direct measure of target variable, drop it  
++ Income.composition.of.resources is too highly correlated with income.composition
+
+### Drop Columns 
+```{r}
+le %>%
+  dplyr::select(-c(Adult.Mortality, infant.deaths, percentage.expenditure, thinness.5.9.years, Income.composition.of.resources)) -> le.drop
+
+```
+
+**check for illegal values  **
+```{r}
+# check for under 5 deaths greater than 1000
+le.drop %>%
+  filter(under.five.deaths <= 1000) -> le.clean
+```
+
+the following columns are supposed to be ratios:
+```{r}
+ratios <- c(le.clean$Hepatitis.B, le.clean$Polio, le.clean$Total.expenditure, le.clean$Diptheria, le.clean$thinness..1.19.years, le.clean$Income.composition.of.resources )
+le.clean %>%
+  dplyr::mutate(Hepatitis.B = round(Hepatitis.B/100, 3)) %>%
+  dplyr::mutate(Polio = round(Polio/100, 3)) %>%
+  dplyr::mutate(Total.expenditure =round((Total.expenditure/10),3)) %>%
+  dplyr::mutate(Diphtheria = round(Diphtheria/100,3)) %>%
+  dplyr::mutate(Thinness = round(thinness..1.19.years/100, 3)) %>%
+  dplyr::select(-thinness..1.19.years)  -> le.clean
+
+```
+
+Let's split data into train and test
+```{r}
+set.seed(7)
+tt <- sample(1:2, size = nrow(le.clean), replace = TRUE, prob=c(0.9, 0.1))
+le.train <- le.clean[tt == 1,]
+le.test <- le.clean[tt == 2,]
+```
+
+Let's train a model using step wise by AIC
+```{r}
+le.train.emptyMod <- lm(Life.expectancy ~ 1, data = le.train[,-c(1,2)])
+le.train.fullMod <- lm(Life.expectancy ~ ., data = le.train[,-c(1,2)])
+scope = list(lower = formula(le.train.emptyMod), upper = formula(le.train.fullMod))
+le.train.FAIC <- step(le.train.emptyMod, scope, direction = 'forward', k=2)
+```
+
+**let's look at the model**
+```{r}
+summary(le.train.FAIC)
+```
+```{r}
+plot(le.train.FAIC)
+```
+
+**lets do some prediction with our test DF**
+```{r}
+le.predictCon <- predict(le.train.FAIC, le.test, interval = 'confidence')
+le.predictPred <-predict(le.train.FAIC, le.test, interval = 'prediction')
+
+lm(le.test$Life.expectancy ~ le.predictCon[,1])
+lm(predictedValues$prediction ~ predictedValues$prediction.upper)
+```
+**concat upper and lower confidence and prediction value to test dataframe**
+```{r}
+cbind(le.test, 'prediction' = le.predictCon[,1], 
+      'confidence.lower' = le.predictCon[,2],
+      'confidence.upper' = le.predictCon[,3],
+      'prediction.lower' = le.predictPred[,2],
+      'prediction.upper' = le.predictPred[,3]) -> predictedValues
+
+```
+```{r}
+library(ggrepel)
+g <- ggplot(predictedValues, aes(y = Life.expectancy, x = prediction))
+g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color = 'Regression Line')) +
+  geom_abline(intercept = 1.0644, slope = .9923, color = 'darkgreen', se = FALSE, aes(color = 'Confidence Band')) + 
+  geom_abline(intercept = -.9698, slope = 1.0063, color = 'darkgreen', se = FALSE,  aes(color = 'Confidence  Band')) +
+  geom_abline(intercept = 9.0986, slope = .994, color = 'red', se = FALSE, aes(color = 'Prediction Band')) +
+  geom_abline(intercept = -9.109, slope = 1.001, color = 'red', se = FALSE, aes(color = 'Prediction Band')) + labs(
+    x = 'Predicted Life Expectancy', y = 'Observed Life Expectancy') +  
+    ggtitle('Observed Vs Predicted Life Expectancy') +
+    scale_color_manual(name='Regression Model',
+                     breaks=c('Regression Line', 'Confidence Band', 'Prediction Band'),
+                     values=c('Prediction Band'='red', 'Regression Line'='blue', 'Confidence Band'='darkgreen'))
+  
+```
+
+
+
+
+```{r}
+t.test(le.test$Life.expectancy, le.predictCon[,1])
+```
+Model looks good  
+**There are 2 variables that can be tailored to an individual can we input numbers for a person and estimate their life expectancy**
++ BMI  
++ Schooling  
+
+**let's change the BMI by 10% on the test data and rerun the prediction and see how the values change**
+
+```{r}
+le.test %>%
+  mutate(BMI = BMI *1.1) -> le.test.bmi
+le.predictBMI <-predict(le.train.FAIC, le.test.bmi, interval = 'prediction')
+cbind(le.test, 'Nudge.BMI' = le.test.bmi$BMI, 'prediction.original' = predictedValues$prediction, 'prediction.bmi' = le.predictBMI[,1]) -> nudgeBMI
+nudgeBMI
+
+```
+
+```{r}
+#calculate average difference
+nudgeBMI %>%
+  summarise(per_change = mean(abs(prediction.bmi - prediction.original)/prediction.original) * 100)
+```
+
+```{r}
+g <- ggplot(nudgeBMI, aes(y = prediction.original, x = BMI))
+g + geom_smooth(se = FALSE, aes(color = 'Original')) + geom_smooth(aes(x = Nudge.BMI, y = prediction.bmi, color = 'BMI +10%'), se = FALSE) + labs(
+  x = 'BMI', y = 'Predicted Life Expectancy') + ggtitle('BMI vs Life Expectancy') +
+  scale_color_manual(name='BMI',
+                     breaks=c('Original', 'BMI +10%'),
+                     values=c('Original'='blue', 'BMI +10%'='red'))
+```
+```{r}
+le.test %>%
+  mutate(Schooling = Schooling *1.1) -> le.test.schooling
+le.predictSchooling <-predict(le.train.FAIC, le.test.schooling, interval = 'prediction')
+cbind(le.test, 'Nudge.Schooling' = le.test.schooling$Schooling, 'prediction.original' = predictedValues$prediction, 'prediction.schooling' = le.predictSchooling[,1]) -> nudgeSchooling
+nudgeSchooling
+```
+```{r}
+#calculate average difference
+nudgeSchooling %>%
+  summarise(per_change = mean(abs(prediction.schooling - prediction.original)/prediction.original) * 100)
+```
+```{r}
+g <- ggplot(nudgeSchooling, aes(y = prediction.original, x = Schooling))
+g + geom_smooth(se = FALSE, aes(color = 'Original')) + geom_smooth(aes(x = Nudge.Schooling, y = prediction.schooling, color = 'Schooling +10%'), se = FALSE) + labs(
+  x = 'Schooling', y = 'Predicted Life Expectancy') + ggtitle('Schooling vs Life Expectancy') +
+  scale_color_manual(name='BMI',
+                     breaks=c('Original', 'Schooling +10%'),
+                     values=c('Original'='blue', 'Schooling +10%'='red'))
+```
+
+**write a function that takes in country schooling and BMI and outputs a life expectancy with 95% confidence levels**
+
+```{r}
+expectLife <- function(country,BMI,school){
+  
+# need to pull status from df
+first(le.clean[le.clean$Country == country,]$Status) -> developing
+  
+  le.clean %>%
+    dplyr::select(Country, HIV.AIDS, Diphtheria, under.five.deaths, GDP, Polio, Thinness, Hepatitis.B, Population) %>%
+    dplyr::filter(Country == country) %>%
+    dplyr::select(-Country) %>%
+    summarise_all(mean) %>%
+    cbind(., 'Status' = developing, 'BMI' = BMI, 'Schooling' = school) -> newwdata
+  prediction <- predict(le.train.FAIC, newwdata, interval = 'confidence')
+  prediction[,1]
+  
+}
+expectLife('United States of America', 30, 16)
+```
+```{r}
+  le.clean %>%
+    dplyr::select(Country, HIV.AIDS, Diphtheria, under.five.deaths, GDP, Polio, Thinness, Hepatitis.B, Population) %>%
+    dplyr::filter(Country == 'Germany') %>%
+    dplyr::select(-Country) %>%
+    summarise_all(mean) %>%
+    cbind(., 'Status' = developing, 'BMI' = BMI, 'Schooling' = school) -> newwdata
+
+```
+*
+**let's see how our predictions change when a single variable changes**
+
+```{r}
+# make a df with only modeled and target variable
+le.train %>%
+  dplyr::select(-Measles, Total.expenditure, -Country,-Year) -> modeledDF
+tempDF <- modeledDF
+graphDF <- data.frame()
+for (i in 3:ncol(modeledDF)){
+  graphname <- paste0(oldColName, '_Graph')
+  oldColName <- colnames(modeledDF)[i]
+  xmin <- 
+  for (j in c(.5, .7, .9, 1, 1.1, 1.5, 2, 3)){
+    newValues <- modeledDF[oldColName] * j
+    tempDF[oldColName] <- modeledDF[oldColName] * j
+    predictValues <- predict(le.train.FAIC, modeledDF, interval = 'prediction')
+    jFrame <- data.frame(as.factor(rep(j, nrow(modeledDF))),
+                         tempDF[oldColName],
+                         predictValues[,1])
+    graphDF <- rbind(graphDF, jFrame)
+  }
+ colnames(graphDF) <-  c('Nudge', oldColName, 'Predicted')
+ g <- ggplot(graphDF, aes(x = graphDF[,2], y = graphDF[,3], colour = graphDF[,1]))
+ g <- g + geom_smooth(se = FALSE) + ggtitle(paste0(oldColName, ' vs. Life Expectancy'))
+ g <- g + labs(x = oldColName, y = 'Life Expectancy') + coord_cartesian(xlim =  c(quantile(modeledDF[,oldColName], .25), quantile(modeledDF[,oldColName], .75)))
+ 
+ show(g)
+ graphDF <- data.frame()
+ tempDF <- modeledDF
+ 
+}
+```
+
+```{r}
+paste0(colnames(modeledDF)[1], 1.1)
+modeledDF['BMI'] * 1.1
+newValues[1]
+tempDF['BMI'] <- modeledDF['BMI'] * 2
+rbind('nudge' = j, oldColName = tempDF[oldColName])
+data.frame(oldColName = rep(j, nrow(modeledDF)))
+library(stringi)
+quantile(as.vector(tempDF['BMI']), .25)
+as.vector(tempDF['BMI'])
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
