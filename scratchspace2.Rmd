@@ -164,6 +164,8 @@ le.clean %>%
 
 ```
 
+
+
 Let's split data into train and test
 ```{r}
 set.seed(7)
@@ -193,8 +195,7 @@ plot(le.train.FAIC)
 le.predictCon <- predict(le.train.FAIC, le.test, interval = 'confidence')
 le.predictPred <-predict(le.train.FAIC, le.test, interval = 'prediction')
 
-lm(le.test$Life.expectancy ~ le.predictCon[,1])
-lm(predictedValues$prediction ~ predictedValues$prediction.upper)
+
 ```
 **concat upper and lower confidence and prediction value to test dataframe**
 ```{r}
@@ -298,15 +299,7 @@ first(le.clean[le.clean$Country == country,]$Status) -> developing
 }
 expectLife('United States of America', 30, 16)
 ```
-```{r}
-  le.clean %>%
-    dplyr::select(Country, HIV.AIDS, Diphtheria, under.five.deaths, GDP, Polio, Thinness, Hepatitis.B, Population) %>%
-    dplyr::filter(Country == 'Germany') %>%
-    dplyr::select(-Country) %>%
-    summarise_all(mean) %>%
-    cbind(., 'Status' = developing, 'BMI' = BMI, 'Schooling' = school) -> newwdata
 
-```
 *
 **let's see how our predictions change when a single variable changes**
 
@@ -317,9 +310,9 @@ le.train %>%
 tempDF <- modeledDF
 graphDF <- data.frame()
 for (i in 3:ncol(modeledDF)){
-  graphname <- paste0(oldColName, '_Graph')
+  
   oldColName <- colnames(modeledDF)[i]
-  xmin <- 
+  graphname <- paste0(oldColName, '_Graph')
   for (j in c(.5, .7, .9, 1, 1.1, 1.5, 2, 3)){
     newValues <- modeledDF[oldColName] * j
     tempDF[oldColName] <- modeledDF[oldColName] * j

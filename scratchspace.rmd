@@ -426,6 +426,32 @@ t.test(le.test$Life.expectancy, le.predictCon[,1])
 
 
 
+```{r}
+options(scipen = 999)
+meanround <- function(x){
+    round(mean(x),2)
+
+}
+  df %>%
+    dplyr::filter(Country == 'Germany') %>%
+    dplyr::select(5:18) %>%
+    summarise_all(meanround) %>%
+    rename('Life Expectancy (Years)' = Life.expectancy,
+           'Average Drinks Per Week' = Alcohol,
+           'Percentage Vax Hepatitis B'=  Hepatitis.B,
+           'Measles Cases per 1000' = Measles,
+           '5 year Mortality per 1000' = under.five.deaths,
+           'Percentage Vax Polio' = Polio,
+           'Percentage of GDP Spent on Healthcare' = Total.expenditure,
+           'Percentage Vax DTP3' = Diphtheria,
+           'Infant HIV Deaths per 1000' = HIV.AIDS,
+           'GDP per Person' = GDP,
+           'Average Education (Years)' = Schooling,
+           'Percentage Below Ideal BMI' = Thinness) %>%
+    pivot_longer(., everything(), names_to = 'Demographic', values_to = 'Value')
+    
+
+```
 
 
 
