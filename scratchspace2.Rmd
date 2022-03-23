@@ -8,6 +8,8 @@ library(tidyverse)
 library(dplyr)
 library(ggplot2)
 library(corrplot)
+library(MASS)
+library(car)
 ```
 
 
@@ -187,7 +189,13 @@ le.train.FAIC <- step(le.train.emptyMod, scope, direction = 'forward', k=2)
 summary(le.train.FAIC)
 ```
 ```{r}
-plot(le.train.FAIC)
+vif(le.train.FAIC)
+```
+
+
+```{r}
+png(file = '2.png')
+plot(le.train.FAIC, which =2)
 ```
 
 **lets do some prediction with our test DF**
@@ -208,6 +216,7 @@ cbind(le.test, 'prediction' = le.predictCon[,1],
 ```
 ```{r}
 library(ggrepel)
+png(file = 'ObsPred.png')
 g <- ggplot(predictedValues, aes(y = Life.expectancy, x = prediction))
 g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color = 'Regression Line')) +
   geom_abline(intercept = 1.0644, slope = .9923, color = 'darkgreen', se = FALSE, aes(color = 'Confidence Band')) + 
@@ -221,6 +230,19 @@ g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color =
                      values=c('Prediction Band'='red', 'Regression Line'='blue', 'Confidence Band'='darkgreen'))
   
 ```
+```{r}
+png(file = 'actual.png')
+predictedValues %>%
+  dplyr::select(c(Life.expectancy, prediction)) %>%
+  ggplot(., aes(y = Life.expectancy)) + geom_boxplot() + ggtitle('Distribution of Actual Life Expectancies') + labs(y = 'Life Expectancy') + scale_y_continuous(limits = c(50,90))
+```
+
+```{r}
+png(file = 'predict.png')
+predictedValues %>%
+  dplyr::select(c(Life.expectancy, prediction)) %>%
+  ggplot(., aes(y = prediction)) + geom_boxplot() + ggtitle('Distribution of Predicted Life Expectancies') + labs(y = 'Life Expectancy') +  scale_y_continuous(position = 'right', limits = c(50,90))
+```
 
 
 
@@ -228,6 +250,15 @@ g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color =
 ```{r}
 t.test(le.test$Life.expectancy, le.predictCon[,1])
 ```
+```{r}
+library(ggpubr)
+library(rstatix)
+library(gginference)
+library(MASS)
+png(file = 'ttest.png')
+ggttest(t.test(le.test$Life.expectancy, le.predictCon[,1]))
+```
+
 Model looks good  
 **There are 2 variables that can be tailored to an individual can we input numbers for a person and estimate their life expectancy**
 + BMI  
@@ -334,27 +365,88 @@ for (i in 3:ncol(modeledDF)){
 }
 ```
 
+
+
+
+# Creating content for presentation  
+
 ```{r}
-paste0(colnames(modeledDF)[1], 1.1)
-modeledDF['BMI'] * 1.1
-newValues[1]
-tempDF['BMI'] <- modeledDF['BMI'] * 2
-rbind('nudge' = j, oldColName = tempDF[oldColName])
-data.frame(oldColName = rep(j, nrow(modeledDF)))
-library(stringi)
-quantile(as.vector(tempDF['BMI']), .25)
-as.vector(tempDF['BMI'])
+le %>%
+  rename('Adult Mortality' = Adult.Mortality,
+         'Life Expectancy' = Life.expectancy,
+         'Infant Deaths' = infant.deaths,
+         'Alcohol Per Week' = Alcohol,
+         'Healthcare Spending of GDP' = percentage.expenditure,
+         'Hepatitis B Vax Rate' = Hepatitis.B,
+         'Measles Cases' = Measles,
+         'Todler Mortality' = under.five.deaths,
+         'Polio Vax Rate' = Polio,
+         'Health Spending % of Budget' = Total.expenditure,
+         'DTP3 Vax Rate' = Diphtheria,
+         'Infant HIV/AIDS Deaths' = HIV.AIDS,
+         'Adolescent Underweight' = thinness..1.19.years,
+         'Toddler Underweight' = thinness.5.9.years,
+         'Human Developement Index' = Income.composition.of.resources,
+         'Education (Years)' = Schooling) %>%
+  dplyr::select(-c(Country, Status)) -> D
+round(cor(as.data.frame(na.omit(D))),2) -> C
+png(file = 'CompleteCorrelation.png')
+corrplot(C, method='circle', type = 'lower', color = 'black')
+
+```
+
+le %>%
+  keep(is.numeric) -> le.num
+round(cor(as.data.frame(na.omit(le.num))),2) -> C
+png(file = 'corr.png', res = 300, width = 4500, height = 4500)
+corrplot(C, method='circle', type = 'lower')
+
+```{r}
+png(file = 'GDPPerPerson.png', res = 500, width = 4500, height = 4500)
+ggplot(le, aes(x =(GDP - mean(GDP))/sd(GDP)+ .6)) + geom_histogram(bins = 100)  + ggtitle('Distribution of Healthcare Spending Per Person') + labs(x = 'Percentage of Budget Spent on Healthcare', y = 'Count') + theme(axis.title.x = element_text(size = 15),                                                                                                                                              axis.title.y = element_text(size = 14),
+      plot.title = element_text(size = 20))
+                                                                                                                                                                            
 ```
 
 
 
+```{r}
+png(file = 'HCPerCentExpenditure.png', res = 500, width = 4500, height = 4500)
+ggplot(le, aes(x = Total.expenditure * 1000)) + geom_histogram(bins = 100) + ggtitle('Distribution of GDP') + labs(x = 'GDP Per Person ($)', y = 'Count')+
+   theme(axis.title.x = element_text(size = 15),                                                                                                                                              axis.title.y = element_text(size = 14),
+      plot.title = element_text(size = 20))
+```
 
 
 
+```{r}
+normalized <- function(y){
+  x <- (y - min(y))/(max(y) - min(y))
+  return(x)
+}
+le.clean %>%
+  mutate(AlcoholScaled = 1 - normalized(Alcohol)) %>%
+  mutate(LEScaled = normalized(Life.expectancy)) %>%
+  mutate(HepScaled = normalized(Hepatitis.B)) %>%
+  mutate(MeaslesScaled = normalized(Measles))%>%
+  mutate(BMIScaled = 1 - normalized(BMI))%>%
+  mutate(PolioScaled = normalized(Polio))%>%
+  mutate(TotalExpScaled = 1-normalized(Total.expenditure))%>%
+  mutate(DipScaled = normalized(Diphtheria)) %>%
+  mutate(HealthIndex = AlcoholScaled * LEScaled * HepScaled * MeaslesScaled * BMIScaled * PolioScaled * TotalExpScaled * DipScaled) %>%
+  dplyr::select(Country, Year, HealthIndex) -> HealthIndexDF
+  
+  
+  
+```
 
-
-
-
+```{r}
+HealthIndexDF %>%
+  group_by(Country) %>%
+  summarise(meanHI = mean(HealthIndex)) %>%
+  arrange(desc(meanHI)) %>%
+  top_n(10)
+```
 
 
 
