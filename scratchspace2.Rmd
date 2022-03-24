@@ -439,13 +439,26 @@ le.clean %>%
   
   
 ```
+```{r}
+png(file = 'HealthindexHist.png')
+HealthIndexDF %>%
+  ggplot(., aes(x = HealthIndex)) + geom_histogram(bins = 500) + xlim(0, .01) + ylim(0,300) +
+  ggtitle('Distribution of HealthIndex by Country' )
+```
+
 
 ```{r}
 HealthIndexDF %>%
   group_by(Country) %>%
   summarise(meanHI = mean(HealthIndex)) %>%
   arrange(desc(meanHI)) %>%
-  top_n(10)
+  top_n(5)%>%
+  dplyr::select(Country) -> topCountries
+png(file = 'healthindexbyyear.png', height = 400, width = 900)
+HealthIndexDF%>%
+  filter(Country %in% topCountries$Country) %>%
+  ggplot(., aes(x = Year, y = HealthIndex, color = Country)) + geom_line() + 
+  ggtitle('Health Index Over Time by Country')
 ```
 
 
