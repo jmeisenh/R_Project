@@ -95,10 +95,24 @@ Let's look at numerical correlations.
 
 ```{r}
 le %>%
-  keep(is.numeric) -> le.num
+  keep(is.numeric) %>%
+  rename('L.E.' = Life.expectancy,
+         'Mortality' = Adult.Mortality,
+         'Inf. Deaths' = infant.deaths,
+         'HC Spending' = percentage.expenditure,
+         'HepB' = Hepatitis.B,
+         'Tod. Deaths' = under.five.deaths,
+         '% HC Spending' = Total.expenditure,
+         'DTP3' = Diphtheria,
+         'Pop' = Population,
+         'Ad. Thin' = thinness..1.19.years,
+         'Inf. Thin' = thinness.5.9.years,
+         'HDI' = Income.composition.of.resources)-> le.num
 round(cor(as.data.frame(na.omit(le.num))),2) -> C
-png(file = 'corr.png', res = 300, width = 4500, height = 4500)
-corrplot(C, method='circle', type = 'lower')
+
+  
+png(file = 'corr.png', width = 450, height = 450)
+corrplot(C, method='circle', type = 'lower', bg = 'gray96', tl.col = 'black')
 ```
 
 
@@ -216,9 +230,9 @@ cbind(le.test, 'prediction' = le.predictCon[,1],
 ```
 ```{r}
 library(ggrepel)
-png(file = 'ObsPred.png')
-g <- ggplot(predictedValues, aes(y = Life.expectancy, x = prediction))
-g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color = 'Regression Line')) +
+png(file = 'ObsPred.png', height = 450, width = 750)
+g <- ggplot(predictedValues, aes(y = Life.expectancy, x = prediction)) + theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
+g + geom_point(size = 1.05, color="firebrick") + geom_smooth(method = "lm", se = FALSE, aes(color = 'Regression Line')) +
   geom_abline(intercept = 1.0644, slope = .9923, color = 'darkgreen', se = FALSE, aes(color = 'Confidence Band')) + 
   geom_abline(intercept = -.9698, slope = 1.0063, color = 'darkgreen', se = FALSE,  aes(color = 'Confidence  Band')) +
   geom_abline(intercept = 9.0986, slope = .994, color = 'red', se = FALSE, aes(color = 'Prediction Band')) +
@@ -234,14 +248,16 @@ g + geom_point(size = 1.05) + geom_smooth(method = "lm", se = FALSE, aes(color =
 png(file = 'actual.png')
 predictedValues %>%
   dplyr::select(c(Life.expectancy, prediction)) %>%
-  ggplot(., aes(y = Life.expectancy)) + geom_boxplot() + ggtitle('Distribution of Actual Life Expectancies') + labs(y = 'Life Expectancy') + scale_y_continuous(limits = c(50,90))
+  ggplot(., aes(y = Life.expectancy)) + geom_boxplot(fill="darkseagreen4") + ggtitle('Distribution of Actual Life Expectancies') + labs(y = 'Life Expectancy') + scale_y_continuous(limits = c(50,90)) +
+  theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
 ```
 
 ```{r}
 png(file = 'predict.png')
 predictedValues %>%
   dplyr::select(c(Life.expectancy, prediction)) %>%
-  ggplot(., aes(y = prediction)) + geom_boxplot() + ggtitle('Distribution of Predicted Life Expectancies') + labs(y = 'Life Expectancy') +  scale_y_continuous(position = 'right', limits = c(50,90))
+  ggplot(., aes(y = prediction)) + geom_boxplot(fill="darkseagreen4") + ggtitle('Distribution of Predicted Life Expectancies') + labs(y = 'Life Expectancy') +  scale_y_continuous(position = 'right', limits = c(50,90)) + 
+  theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
 ```
 
 
@@ -255,7 +271,7 @@ library(ggpubr)
 library(rstatix)
 library(gginference)
 library(MASS)
-png(file = 'ttest.png')
+png(file = 'ttest.png', height = 400, width = 900)
 ggttest(t.test(le.test$Life.expectancy, le.predictCon[,1]))
 ```
 
@@ -402,19 +418,25 @@ png(file = 'corr.png', res = 300, width = 4500, height = 4500)
 corrplot(C, method='circle', type = 'lower')
 
 ```{r}
-png(file = 'GDPPerPerson.png', res = 500, width = 4500, height = 4500)
-ggplot(le, aes(x =(GDP - mean(GDP))/sd(GDP)+ .6)) + geom_histogram(bins = 100)  + ggtitle('Distribution of Healthcare Spending Per Person') + labs(x = 'Percentage of Budget Spent on Healthcare', y = 'Count') + theme(axis.title.x = element_text(size = 15),                                                                                                                                              axis.title.y = element_text(size = 14),
-      plot.title = element_text(size = 20))
-                                                                                                                                                                            
+png(file = 'GDPPerPerson.png', width = 550, height = 450)
+ggplot(le, aes(x =(GDP - mean(GDP))/sd(GDP)+ .6)) + geom_histogram(aes(y = ..density..), bins = 100, color = "#000000", fill = "#0099F8")  + ggtitle('Distribution of Healthcare Spending Per Person') + labs(x = 'Percentage of Budget Spent on Healthcare', y = 'Density') + theme_classic() + theme(
+  axis.title.x = element_text(size = 15),
+  plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6),
+  axis.title.y = element_text(size = 14)
+  ) +
+  geom_density(color = "#000000", fill = "#F85700", alpha = 0.6)
+                                                                                                                                                                             
 ```
 
 
 
 ```{r}
-png(file = 'HCPerCentExpenditure.png', res = 500, width = 4500, height = 4500)
-ggplot(le, aes(x = Total.expenditure * 1000)) + geom_histogram(bins = 100) + ggtitle('Distribution of GDP') + labs(x = 'GDP Per Person ($)', y = 'Count')+
-   theme(axis.title.x = element_text(size = 15),                                                                                                                                              axis.title.y = element_text(size = 14),
-      plot.title = element_text(size = 20))
+png(file = 'HCPerCentExpenditure.png', width = 550, height = 450)
+ggplot(le, aes(x = Total.expenditure * 1000)) + geom_histogram(aes(y = ..density..), bins = 100, color = "#000000", fill = "#0099F8") + geom_density(color = "#000000", fill = "#F85700", alpha = 0.6) + ggtitle('Distribution of GDP') + labs(x = 'GDP Per Person ($)', y = 'Density')+ theme_classic() + 
+   theme(
+     axis.title.x = element_text(size = 15),                                                                                                                                              axis.title.y = element_text(size = 14),
+      plot.title = element_text(size = 20, face="bold", vjust=1, lineheight=0.6)
+     )
 ```
 
 
@@ -434,15 +456,15 @@ le.clean %>%
   mutate(TotalExpScaled = 1-normalized(Total.expenditure))%>%
   mutate(DipScaled = normalized(Diphtheria)) %>%
   mutate(HealthIndex = AlcoholScaled * LEScaled * HepScaled * MeaslesScaled * BMIScaled * PolioScaled * TotalExpScaled * DipScaled) %>%
-  dplyr::select(Country, Year, HealthIndex) -> HealthIndexDF
+  dplyr::select(Country, Year, HealthIndex) #-> HealthIndexDF
   
   
   
 ```
 ```{r}
-png(file = 'HealthindexHist.png')
+png(file = 'HealthindexHist.png', height = 400, width = 900)
 HealthIndexDF %>%
-  ggplot(., aes(x = HealthIndex)) + geom_histogram(bins = 500) + xlim(0, .01) + ylim(0,300) +
+  ggplot(., aes(x = HealthIndex)) + geom_histogram(aes(y = ..density..), bins = 100, color = "#000000", fill = "#0099F8") +  theme_classic() + xlim(0, .01) + ylim(0,300) +
   ggtitle('Distribution of HealthIndex by Country' )
 ```
 
@@ -457,11 +479,31 @@ HealthIndexDF %>%
 png(file = 'healthindexbyyear.png', height = 400, width = 900)
 HealthIndexDF%>%
   filter(Country %in% topCountries$Country) %>%
-  ggplot(., aes(x = Year, y = HealthIndex, color = Country)) + geom_line() + 
-  ggtitle('Health Index Over Time by Country')
+  ggplot(., aes(x = Year, y = HealthIndex, color = Country)) + geom_line(size = 1) + 
+  ggtitle('Health Index Over Time by Country') + theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
 ```
 
 
+```{r}
+le.clean %>%
+  ggplot(., aes(x = GDP, y = Total.expenditure)) + geom_point() + geom_smooth(method = 'lm')
+summary(lm(GDP ~ Total.expenditure, data = le.clean))$r.squared
+```
+```{r}
+png(file = 'underweight.png', width = 700, height = 450)
+le %>%
+  ggplot(., aes(x = thinness..1.19.years, y = thinness.5.9.years)) + geom_point(color = 'slateblue4', size = .9) + ggtitle('Infant vs Adolescent Underweight') +
+  labs(x = 'Adolescent % Underweight', y = 'Infant % Underweight') + theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
+```
+stat_density_2d(aes(fill = ..level..), geom="polygon")+
+  scale_fill_gradient(low="blue", high="red")
+
+```{r}
+png(file = 'HDI.png', height = 450, width = 700)
+le %>%
+  ggplot(., aes(x = Schooling, y = Income.composition.of.resources)) + geom_point(color = 'slateblue4', size = .9) + ggtitle('HDI vs Education') + 
+  labs(x = 'Years Educated', y = 'Human Developement Index') + theme(panel.background = element_rect(fill = 'grey75'), plot.title = element_text(size=20, face="bold", vjust=1, lineheight=0.6))
+```
 
 
 
